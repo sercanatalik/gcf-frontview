@@ -1,0 +1,59 @@
+import { NextResponse } from "next/server";
+import { clickhouse } from "@/lib/clickhouse";
+
+export async function GET() {
+  try {
+    const tablesResult = await clickhouse.query({
+      query: "SHOW TABLES",
+      format: "TabSeparated",
+    });
+    const tablesText = await tablesResult.text();
+    const tableNames = tablesText.trim().split("\n").filter(Boolean);
+
+    const tables = await Promise.all(
+      tableNames.map(async (name) => {
+        const [schemaResult, countResult] = await Promise.all([
+          clickhouse.query({
+            query: `DESCRIBE TABLE ${name}`,
+            format: "JSONEachRow",
+          }),
+          clickhouse.query({
+            query: `SELECT count() as count FROM ${name}`,
+            format: "JSONEachRow",
+          }),
+        ]);
+
+        const columns = await schemaResult.json<{
+          name: string;
+          type: string;
+          default_type: string;
+          default_expression: string;
+          comment: string;
+        }>();
+
+        const countRows = await countResult.json<{ count: string }>();
+        const rowCount = Number(countRows[0]?.count ?? 0);
+
+        return {
+          name,
+          columns: columns.map((col) => ({
+            name: col.name,
+            type: col.type,
+            defaultType: col.default_type || undefined,
+            defaultExpression: col.default_expression || undefined,
+            comment: col.comment || undefined,
+          })),
+          rowCount,
+        };
+      })
+    );
+
+    return NextResponse.json({ tables });
+  } catch (error) {
+    console.error("Failed to fetch tables:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch tables" },
+      { status: 500 }
+    );
+  }
+}
