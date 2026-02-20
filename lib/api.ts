@@ -1,6 +1,17 @@
-import type { TablesResponse, TableQueryParams, TableQueryResponse } from "./types";
+import type {
+  TablesResponse,
+  TableQueryParams,
+  TableQueryResponse,
+  EnrichedTablesResponse,
+} from "./types";
 
 export async function fetchTables(): Promise<TablesResponse> {
+  const res = await fetch("/api/tables");
+  if (!res.ok) throw new Error("Failed to fetch tables");
+  return res.json();
+}
+
+export async function fetchEnrichedTables(): Promise<EnrichedTablesResponse> {
   const res = await fetch("/api/tables");
   if (!res.ok) throw new Error("Failed to fetch tables");
   return res.json();
@@ -26,4 +37,34 @@ export async function fetchTableData(params: TableQueryParams): Promise<TableQue
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch table '${params.table}'`);
   return res.json();
+}
+
+export async function fetchAllTableData(
+  tableName: string,
+  hasAsOfDate: boolean,
+  batchSize = 100000
+): Promise<Record<string, unknown>[]> {
+  const allRows: Record<string, unknown>[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const searchParams = new URLSearchParams();
+    searchParams.set("limit", String(batchSize));
+    searchParams.set("offset", String(offset));
+    if (hasAsOfDate) {
+      searchParams.set("as_of_date", "__latest__");
+    }
+
+    const url = `/api/tables/${tableName}?${searchParams.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch table '${tableName}'`);
+    const data: TableQueryResponse = await res.json();
+
+    allRows.push(...data.rows);
+    hasMore = data.meta.hasMore;
+    offset += batchSize;
+  }
+
+  return allRows;
 }

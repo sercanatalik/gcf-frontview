@@ -2,247 +2,214 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { HTMLPerspectiveWorkspaceElement } from "@perspective-dev/workspace";
+import type { LoadingProgress, EnrichedTableInfo } from "@/lib/types";
+import { fetchEnrichedTables, fetchAllTableData } from "@/lib/api";
 
 const STORAGE_KEY = "perspective-workspace-state";
-const DEFAULT_LAYOUT_URL = "/dataset-layout.json";
 
-type ColType = "float" | "integer" | "string" | "datetime" | "boolean";
-
-export interface DataConfig {
-  numRows: number;
-  numBatches: number;
-  batchDelay: number;
-  numFloat: number;
-  numInteger: number;
-  numString: number;
-  numStrings: number;
-  numDatetime: number;
-  numBoolean: number;
-}
-
-export const DEFAULT_CONFIG: DataConfig = {
-  numRows: 100000,
-  numBatches: 1000,
-  batchDelay: 200,
-  numFloat: 5,
-  numInteger: 5,
-  numString: 5,
-  numStrings: 50,
-  numDatetime: 5,
-  numBoolean: 1,
+const INITIAL_PROGRESS: LoadingProgress = {
+  phase: "init-wasm",
+  tablesTotal: 0,
+  tablesLoaded: 0,
+  currentTable: "",
 };
 
-const choose = <T,>(x: T[]): T => x[Math.floor(Math.random() * x.length)];
-const range = (x: number, y: number) => Math.random() * (y - x) + x;
-const randString = () => Math.random().toString(36).substring(7);
-const colName = (type: string, idx: number) =>
-  `${type.charAt(0).toUpperCase() + type.slice(1)} ${idx}`;
-
-function buildSchema(cfg: DataConfig) {
+function buildDefaultLayout(tables: EnrichedTableInfo[]) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const schema: Record<string, any> = {};
-  for (let i = 0; i < cfg.numFloat; i++) schema[`Float ${i}`] = "float";
-  for (let i = 0; i < cfg.numInteger; i++) schema[`Integer ${i}`] = "integer";
-  for (let i = 0; i < cfg.numString; i++) schema[`String ${i}`] = "string";
-  for (let i = 0; i < cfg.numDatetime; i++)
-    schema[`Datetime ${i}`] = "datetime";
-  for (let i = 0; i < cfg.numBoolean; i++) schema[`Boolean ${i}`] = "boolean";
-  return schema;
-}
+  const viewers: Record<string, any> = {};
 
-function buildColumns(cfg: DataConfig) {
-  const columns: [ColType, number][] = [];
-  for (let i = 0; i < cfg.numFloat; i++) columns.push(["float", i]);
-  for (let i = 0; i < cfg.numInteger; i++) columns.push(["integer", i]);
-  for (let i = 0; i < cfg.numString; i++) columns.push(["string", i]);
-  for (let i = 0; i < cfg.numDatetime; i++) columns.push(["datetime", i]);
-  for (let i = 0; i < cfg.numBoolean; i++) columns.push(["boolean", i]);
-  return columns;
+  // Top: first table as datagrid (first 10 columns)
+  if (tables.length > 0) {
+    const first = tables[0];
+    const cols = first.columns.slice(0, 10).map((c) => c.name);
+    viewers["viewer-0"] = {
+      plugin: "Datagrid",
+      columns: cols,
+      table: first.name,
+    };
+  }
+
+  // If no ClickHouse tables, empty layout
+  if (tables.length === 0) {
+    return { sizes: [], viewers, detail: { main: null } };
+  }
+
+  return {
+    sizes: [],
+    viewers,
+    detail: {
+      main: {
+        type: "tab-area" as const,
+        widgets: ["viewer-0"],
+        currentIndex: 0,
+      },
+    },
+  };
 }
 
 export function usePerspective(
   workspaceRef: React.RefObject<HTMLPerspectiveWorkspaceElement | null>
 ) {
-  const [ready, setReady] = useState(false);
+  const [loading, setLoading] = useState<LoadingProgress>(INITIAL_PROGRESS);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tableRef = useRef<any>(null);
-  const statsIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const batchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initStartedRef = useRef(false);
 
-  // Load custom element definitions
   useEffect(() => {
-    let cancelled = false;
-    async function init() {
-      await import("@perspective-dev/viewer-datagrid");
-      await import("@perspective-dev/viewer-d3fc");
-      await import("@perspective-dev/viewer");
-      await import("@perspective-dev/workspace");
-      if (!cancelled) setReady(true);
-    }
-    init();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    if (initStartedRef.current) return;
+    initStartedRef.current = true;
 
-  // Initialize client, tables, and workspace
-  useEffect(() => {
-    if (!ready) return;
     let cancelled = false;
 
     async function setup() {
-      const perspective = (await import("@perspective-dev/client")).default;
-      const viewer = await import("@perspective-dev/viewer");
-      perspective.init_client(fetch("/perspective-js.wasm"));
-      perspective.init_server(fetch("/perspective-server.wasm"));
-      await viewer.init_client(fetch("/perspective-viewer.wasm"));
-      const client = await perspective.worker();
-      clientRef.current = client;
-      if (cancelled) return;
+      try {
+        // Phase 1: Init WASM
+        setLoading({ ...INITIAL_PROGRESS, phase: "init-wasm" });
 
-      // Stats table
-      const statsTable = await client.table(
-        {
-          heap_size: "float",
-          used_size: "float",
-          cpu_time: "integer",
-          cpu_time_epoch: "integer",
-          version: "integer",
-          timestamp: "datetime",
-          client_used: "float",
-          client_heap: "float",
-        },
-        { limit: 2000, name: "stats" }
-      );
+        await import("@perspective-dev/viewer-datagrid");
+        await import("@perspective-dev/viewer-d3fc");
+        await import("@perspective-dev/viewer");
+        await import("@perspective-dev/workspace");
 
-      const pollStats = async () => {
+        const perspective = (await import("@perspective-dev/client")).default;
+        const viewer = await import("@perspective-dev/viewer");
+        perspective.init_client(fetch("/perspective-js.wasm"));
+        perspective.init_server(fetch("/perspective-server.wasm"));
+        await viewer.init_client(fetch("/perspective-viewer.wasm"));
+        const client = await perspective.worker();
+        clientRef.current = client;
         if (cancelled) return;
-        try {
-          await statsTable.update([await client.system_info()]);
-        } catch {
-          /* ignore */
+
+        // Phase 2: Fetch schemas
+        if (cancelled) return;
+        setLoading((p) => ({ ...p, phase: "fetch-schemas" }));
+
+        const { tables } = await fetchEnrichedTables();
+        if (cancelled) return;
+
+        // Phase 3: Load tables
+        setLoading((p) => ({
+          ...p,
+          phase: "load-tables",
+          tablesTotal: tables.length,
+          tablesLoaded: 0,
+        }));
+
+        for (let i = 0; i < tables.length; i++) {
+          const tableInfo = tables[i];
+          if (cancelled) return;
+
+          setLoading((p) => ({
+            ...p,
+            currentTable: tableInfo.name,
+            tablesLoaded: i,
+          }));
+
+          // Build Perspective schema from enriched columns
+          const schema: Record<string, string> = {};
+          const colTypes = new Map<string, string>();
+          for (const col of tableInfo.columns) {
+            schema[col.name] = col.perspectiveType;
+            colTypes.set(col.name, col.perspectiveType);
+          }
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await client.table(schema as any, { name: tableInfo.name });
+
+          // Fetch data
+          const rows = await fetchAllTableData(
+            tableInfo.name,
+            tableInfo.hasAsOfDate
+          );
+
+          // Coerce values to match Perspective schema types
+          for (const row of rows) {
+            for (const [key, val] of Object.entries(row)) {
+              if (val == null) continue;
+              const pType = colTypes.get(key);
+              if (!pType) continue;
+              switch (pType) {
+                case "string":
+                  if (typeof val !== "string") row[key] = String(val);
+                  break;
+                case "datetime":
+                  row[key] = new Date(val as string | number);
+                  break;
+                case "integer":
+                  if (typeof val === "string") row[key] = parseInt(val, 10);
+                  break;
+                case "float":
+                  if (typeof val === "string") row[key] = parseFloat(val);
+                  break;
+                case "boolean":
+                  if (typeof val !== "boolean") row[key] = Boolean(val);
+                  break;
+              }
+            }
+          }
+
+          // Get table reference and update
+          const tbl = await client.open_table(tableInfo.name);
+          if (rows.length > 0) {
+            await tbl.update(rows);
+          }
         }
-        if (!cancelled) statsIntervalRef.current = setTimeout(pollStats, 200);
-      };
-      pollStats();
 
-      // Data table
-      const schema = buildSchema(DEFAULT_CONFIG);
-      const tbl = await client.table(schema, { name: "superstore" });
-      tableRef.current = tbl;
+        setLoading((p) => ({
+          ...p,
+          tablesLoaded: tables.length,
+        }));
 
-      // Workspace
-      await customElements.whenDefined("perspective-workspace");
-      const workspace = workspaceRef.current;
-      if (!workspace) return;
+        // Phase 4: Restore layout
+        if (cancelled) return;
+        setLoading((p) => ({ ...p, phase: "restore-layout" }));
 
-      await workspace.load(client);
+        await customElements.whenDefined("perspective-workspace");
+        const workspace = workspaceRef.current;
+        if (!workspace) return;
 
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          await workspace.restore(JSON.parse(saved));
-        } catch {
-          const layout = await fetch(DEFAULT_LAYOUT_URL).then((r) => r.json());
+        await workspace.load(client);
+
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          try {
+            await workspace.restore(JSON.parse(saved));
+          } catch {
+            const layout = buildDefaultLayout(tables);
+            await workspace.restore(layout);
+          }
+        } else {
+          const layout = buildDefaultLayout(tables);
           await workspace.restore(layout);
         }
-      } else {
-        const layout = await fetch(DEFAULT_LAYOUT_URL).then((r) => r.json());
-        await workspace.restore(layout);
-      }
 
-      workspace.addEventListener("workspace-layout-update", async () => {
-        try {
-          const state = await workspace.save();
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch {
-          /* ignore */
+        workspace.addEventListener("workspace-layout-update", async () => {
+          try {
+            const state = await workspace.save();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          } catch {
+            /* ignore */
+          }
+        });
+
+        if (!cancelled) {
+          setLoading((p) => ({ ...p, phase: "done" }));
         }
-      });
-
-      if (!cancelled) pumpData(tbl, DEFAULT_CONFIG);
+      } catch (err) {
+        if (!cancelled) {
+          setLoading((p) => ({
+            ...p,
+            error: err instanceof Error ? err.message : "Unknown error",
+          }));
+        }
+      }
     }
 
     setup();
     return () => {
       cancelled = true;
-      if (statsIntervalRef.current) clearTimeout(statsIntervalRef.current);
-      if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
-
-  function pumpData(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    tbl: any,
-    cfg: DataConfig
-  ) {
-    if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
-
-    const columns = buildColumns(cfg);
-    const stringCache: Record<number, string[]> = {};
-    const getDict = (idx: number) => {
-      if (!stringCache[idx]) {
-        stringCache[idx] = Array.from({ length: cfg.numStrings }, () =>
-          randString()
-        );
-      }
-      return stringCache[idx];
-    };
-
-    const cellGenerators: Record<ColType, (idx: number) => unknown> = {
-      float: () => range(-10, 10),
-      integer: () => Math.floor(range(-10, 10)),
-      string: (idx) => choose(getDict(idx)),
-      datetime: () => new Date(),
-      boolean: () => choose([true, false, null]),
-    };
-
-    const newRow = () => {
-      const row: Record<string, unknown> = {};
-      for (const [type, idx] of columns) {
-        row[colName(type, idx)] = cellGenerators[type](idx);
-      }
-      return row;
-    };
-
-    let remaining = cfg.numRows;
-    const batchSize = Math.max(1, Math.floor(cfg.numRows / cfg.numBatches));
-
-    const generateBatch = () => {
-      const rows = [];
-      while (remaining > 0) {
-        rows.push(newRow());
-        remaining--;
-        if (remaining > 0 && rows.length >= batchSize) {
-          tbl.update(rows);
-          batchTimerRef.current = setTimeout(generateBatch, cfg.batchDelay);
-          return;
-        }
-      }
-      if (rows.length > 0) tbl.update(rows);
-    };
-    generateBatch();
-  }
-
-  const generateData = useCallback(
-    async (cfg: DataConfig) => {
-      const tbl = tableRef.current;
-      if (!tbl) return;
-      await tbl.clear();
-      pumpData(tbl, cfg);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  const clearData = useCallback(async () => {
-    const tbl = tableRef.current;
-    if (!tbl) return;
-    if (batchTimerRef.current) clearTimeout(batchTimerRef.current);
-    await tbl.clear();
   }, []);
 
   const exportLayout = useCallback(async () => {
@@ -276,14 +243,18 @@ export function usePerspective(
     const workspace = workspaceRef.current;
     if (!workspace) return;
     localStorage.removeItem(STORAGE_KEY);
-    const layout = await fetch(DEFAULT_LAYOUT_URL).then((r) => r.json());
-    await workspace.restore(layout);
+    try {
+      const { tables } = await fetchEnrichedTables();
+      const layout = buildDefaultLayout(tables);
+      await workspace.restore(layout);
+    } catch {
+      /* ignore - workspace will remain in current state */
+    }
   }, [workspaceRef]);
 
   return {
-    ready,
-    generateData,
-    clearData,
+    ready: loading.phase === "done",
+    loading,
     exportLayout,
     importLayout,
     resetLayout,

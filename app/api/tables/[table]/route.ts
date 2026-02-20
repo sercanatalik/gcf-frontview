@@ -1,14 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clickhouse } from "@/lib/clickhouse";
 
-const ALLOWED_TABLES = new Set([
-  "counterparty",
-  "hmsbook",
-  "risk_mv",
-  "trade",
-]);
-
-const MAX_LIMIT = 10000;
+const MAX_LIMIT = 1000000;
 const DEFAULT_LIMIT = 1000;
 
 export async function GET(
@@ -18,7 +11,21 @@ export async function GET(
   try {
     const { table } = await params;
 
-    if (!ALLOWED_TABLES.has(table)) {
+    // Validate table name: alphanumeric + underscores only
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table)) {
+      return NextResponse.json(
+        { error: `Invalid table name: '${table}'` },
+        { status: 400 }
+      );
+    }
+
+    // Check table exists
+    const existsResult = await clickhouse.query({
+      query: `EXISTS TABLE ${table}`,
+      format: "TabSeparated",
+    });
+    const existsText = (await existsResult.text()).trim();
+    if (existsText !== "1") {
       return NextResponse.json(
         { error: `Table '${table}' not found` },
         { status: 404 }
@@ -34,6 +41,7 @@ export async function GET(
     const orderBy = searchParams.get("order_by");
     const orderDir = searchParams.get("order_dir")?.toUpperCase() === "DESC" ? "DESC" : "ASC";
     const columns = searchParams.get("columns");
+    const asOfDate = searchParams.get("as_of_date");
 
     // Build column selection
     const selectColumns = columns
@@ -54,6 +62,25 @@ export async function GET(
     const whereClauses: string[] = [];
     const queryParams: Record<string, string> = {};
     let paramIndex = 0;
+
+    // Handle as_of_date=__latest__ sentinel
+    if (asOfDate === "__latest__") {
+      const maxResult = await clickhouse.query({
+        query: `SELECT max(as_of_date) as max_date FROM ${table}`,
+        format: "JSONEachRow",
+      });
+      const maxRows = await maxResult.json<{ max_date: string }>();
+      const maxDate = maxRows[0]?.max_date;
+      if (maxDate) {
+        const pName = `p${paramIndex++}`;
+        whereClauses.push(`as_of_date = {${pName}:String}`);
+        queryParams[pName] = maxDate;
+      }
+    } else if (asOfDate) {
+      const pName = `p${paramIndex++}`;
+      whereClauses.push(`as_of_date = {${pName}:String}`);
+      queryParams[pName] = asOfDate;
+    }
 
     for (const [key, value] of searchParams.entries()) {
       if (key.startsWith("filter_")) {

@@ -38,3 +38,36 @@ export interface TableQueryResponse {
   rows: Record<string, unknown>[];
   meta: TableQueryMeta;
 }
+
+// Enriched types for dynamic Perspective loading
+
+export interface EnrichedColumnInfo extends ColumnInfo {
+  perspectiveType: "float" | "integer" | "string" | "datetime" | "boolean";
+}
+
+export interface EnrichedTableInfo {
+  name: string;
+  columns: EnrichedColumnInfo[];
+  rowCount: number;
+  hasAsOfDate: boolean;
+  latestAsOfDate?: string;
+}
+
+export interface EnrichedTablesResponse {
+  tables: EnrichedTableInfo[];
+}
+
+export type LoadingPhase =
+  | "init-wasm"
+  | "fetch-schemas"
+  | "load-tables"
+  | "restore-layout"
+  | "done";
+
+export interface LoadingProgress {
+  phase: LoadingPhase;
+  tablesTotal: number;
+  tablesLoaded: number;
+  currentTable: string;
+  error?: string;
+}
