@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
+    "@clickhouse/client": "^1.17.0",
     "@perspective-dev/client": "^4.2.0",
     "@perspective-dev/viewer": "^4.2.0",
     "@perspective-dev/viewer-d3fc": "^4.2.0",
