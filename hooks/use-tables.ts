@@ -7,6 +7,7 @@ export function useTables() {
     queryKey: ["tables"],
     queryFn: fetchTables,
     staleTime: 60_000,
+    refetchInterval: 5 * 60 * 1000,
   });
 }
 
@@ -16,5 +17,6 @@ export function useTableData(params: TableQueryParams | null) {
     queryFn: () => fetchTableData(params!),
     enabled: !!params?.table,
     staleTime: 30_000,
+    refetchInterval: 5 * 60 * 1000,
   });
 }
