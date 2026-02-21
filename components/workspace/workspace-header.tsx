@@ -3,12 +3,18 @@ import { Download, Upload, RotateCcw, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface WorkspaceHeaderProps {
+  layouts: string[];
+  activeLayout: string;
+  onSwitchLayout: (name: string) => void;
   onExport: () => void;
   onImport: (file: File) => void;
   onReset: () => void;
 }
 
 export function WorkspaceHeader({
+  layouts,
+  activeLayout,
+  onSwitchLayout,
   onExport,
   onImport,
   onReset,
@@ -29,7 +35,21 @@ export function WorkspaceHeader({
         <Terminal size={16} strokeWidth={2.5} />
         <span>GCF Workspace</span>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
+        {layouts.length > 0 && (
+          <select
+            value={activeLayout}
+            onChange={(e) => onSwitchLayout(e.target.value)}
+            className="h-7 rounded border border-[#33ff33] bg-[#1e1e1e] px-2 text-[12px] text-[#33ff33] outline-none focus:ring-1 focus:ring-[#33ff33]"
+          >
+            <option value="">Select layout...</option>
+            {layouts.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        )}
         <Button
           variant="ghost"
           size="icon-xs"

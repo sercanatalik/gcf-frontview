@@ -8,8 +8,16 @@ import { usePerspective } from "@/hooks/use-perspective";
 
 export default function DatasetPage() {
   const workspaceRef = useRef<HTMLPerspectiveWorkspaceElement>(null);
-  const { ready, loading, exportLayout, importLayout, resetLayout } =
-    usePerspective(workspaceRef);
+  const {
+    ready,
+    loading,
+    layouts,
+    activeLayout,
+    switchLayout,
+    exportLayout,
+    importLayout,
+    resetLayout,
+  } = usePerspective(workspaceRef);
 
   return (
     <>
@@ -27,6 +35,9 @@ export default function DatasetPage() {
         }}
       >
         <WorkspaceHeader
+          layouts={layouts}
+          activeLayout={activeLayout}
+          onSwitchLayout={switchLayout}
           onExport={exportLayout}
           onImport={importLayout}
           onReset={resetLayout}

@@ -51,6 +51,8 @@ export function usePerspective(
   workspaceRef: React.RefObject<HTMLPerspectiveWorkspaceElement | null>
 ) {
   const [loading, setLoading] = useState<LoadingProgress>(INITIAL_PROGRESS);
+  const [layouts, setLayouts] = useState<string[]>([]);
+  const [activeLayout, setActiveLayout] = useState<string>("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const clientRef = useRef<any>(null);
   const initStartedRef = useRef(false);
@@ -170,6 +172,83 @@ export function usePerspective(
 
         await workspace.load(client);
 
+        // --- Perspective bug patches ---
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const wsInternal = (workspace as any).workspace;
+        if (wsInternal) {
+          // Fix "View not found" crash: _filterViewer is called without
+          // error handling when a global filter propagates to detail views
+          // whose underlying WASM view may not exist yet or was deleted.
+          const origFilterViewer =
+            wsInternal._filterViewer.bind(wsInternal);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          wsInternal._filterViewer = async (...args: any[]) => {
+            try {
+              return await origFilterViewer(...args);
+            } catch {
+              // Silently ignore — view was deleted or not ready
+            }
+          };
+
+          // Fix label crash: several commands use non-null assertions on
+          // getWidgetByName() which returns null after a widget is closed.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const cmdMap = (wsInternal.commands as any)?._commands as
+            | Map<string, // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                any>
+            | undefined;
+          if (cmdMap) {
+            const patchLabel = (id: string, fallback: string) => {
+              const cmd = cmdMap.get(id);
+              if (!cmd) return;
+              const orig = cmd.label;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              cmd.label = (...a: any[]) => {
+                try {
+                  return orig(...a);
+                } catch {
+                  return fallback;
+                }
+              };
+            };
+            patchLabel("workspace:master", "Global Filter");
+            patchLabel("workspace:settings", "Settings");
+            patchLabel("workspace:newview", "View");
+          }
+
+          // Add custom "gcf-frontview" context menu item
+          if (wsInternal.commands) {
+            wsInternal.commands.addCommand("workspace:gcf-frontview", {
+              execute: () => {
+                // TODO: wire up action
+              },
+              label: "gcf-frontview",
+              mnemonic: 0,
+            });
+
+            const origCreateCtx =
+              wsInternal.createContextMenu.bind(wsInternal);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            wsInternal.createContextMenu = (widget: any) => {
+              const menu = origCreateCtx(widget);
+              menu.addItem({ type: "separator" });
+              menu.addItem({ command: "workspace:gcf-frontview" });
+              return menu;
+            };
+          }
+        }
+
+        // Fetch available layouts
+        try {
+          const res = await fetch("/api/layouts");
+          const data = await res.json();
+          if (data.layouts) {
+            setLayouts(data.layouts.map((l: { name: string }) => l.name));
+          }
+        } catch {
+          /* ignore — layouts list is optional */
+        }
+
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
           try {
@@ -239,6 +318,24 @@ export function usePerspective(
     [workspaceRef]
   );
 
+  const switchLayout = useCallback(
+    async (name: string) => {
+      const workspace = workspaceRef.current;
+      if (!workspace) return;
+      try {
+        const res = await fetch(`/api/layouts/${encodeURIComponent(name)}`);
+        if (!res.ok) return;
+        const layout = await res.json();
+        await workspace.restore(layout);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+        setActiveLayout(name);
+      } catch {
+        /* ignore */
+      }
+    },
+    [workspaceRef]
+  );
+
   const resetLayout = useCallback(async () => {
     const workspace = workspaceRef.current;
     if (!workspace) return;
@@ -255,6 +352,9 @@ export function usePerspective(
   return {
     ready: loading.phase === "done",
     loading,
+    layouts,
+    activeLayout,
+    switchLayout,
     exportLayout,
     importLayout,
     resetLayout,

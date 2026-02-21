@@ -1,0 +1,251 @@
+{
+  "sizes": [
+    0.2815528549382716,
+    0.7184471450617284
+  ],
+  "detail": {
+    "main": {
+      "type": "split-area",
+      "orientation": "vertical",
+      "children": [
+        {
+          "type": "split-area",
+          "orientation": "horizontal",
+          "children": [
+            {
+              "type": "tab-area",
+              "widgets": [
+                "PERSPECTIVE_GENERATED_ID_1"
+              ],
+              "currentIndex": 0
+            },
+            {
+              "type": "tab-area",
+              "widgets": [
+                "PERSPECTIVE_GENERATED_ID_2"
+              ],
+              "currentIndex": 0
+            }
+          ],
+          "sizes": [
+            0.5,
+            0.5
+          ]
+        },
+        {
+          "type": "split-area",
+          "orientation": "horizontal",
+          "children": [
+            {
+              "type": "tab-area",
+              "widgets": [
+                "PERSPECTIVE_GENERATED_ID_3"
+              ],
+              "currentIndex": 0
+            },
+            {
+              "type": "tab-area",
+              "widgets": [
+                "PERSPECTIVE_GENERATED_ID_4"
+              ],
+              "currentIndex": 0
+            }
+          ],
+          "sizes": [
+            0.5,
+            0.5
+          ]
+        }
+      ],
+      "sizes": [
+        0.5,
+        0.5
+      ]
+    }
+  },
+  "viewers": {
+    "PERSPECTIVE_GENERATED_ID_0": {
+      "version": "4.2.0",
+      "columns_config": {
+        "collateral_amount": {
+          "number_format": {
+            "notation": "compact",
+            "compactDisplay": "short"
+          }
+        },
+        "funding_amount": {
+          "number_format": {
+            "notation": "compact",
+            "compactDisplay": "short"
+          }
+        }
+      },
+      "plugin": "Datagrid",
+      "plugin_config": {},
+      "table": "risk_mv",
+      "theme": "Pro Light",
+      "title": "DeskFilter",
+      "group_by": [
+        "desk",
+        "region_code"
+      ],
+      "split_by": [],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "funding_amount",
+        "collateral_amount"
+      ],
+      "aggregates": {}
+    },
+    "PERSPECTIVE_GENERATED_ID_5": {
+      "version": "4.2.0",
+      "columns_config": {
+        "collateral_amount": {
+          "number_format": {
+            "notation": "compact",
+            "compactDisplay": "short"
+          }
+        },
+        "funding_amount": {
+          "number_format": {
+            "notation": "compact",
+            "compactDisplay": "short"
+          }
+        }
+      },
+      "plugin": "Datagrid",
+      "plugin_config": {},
+      "table": "risk_mv",
+      "theme": "Pro Light",
+      "title": null,
+      "group_by": [
+        "collateral_type",
+        "counterparty_type",
+        "counterparty_name"
+      ],
+      "split_by": [],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "collateral_amount",
+        "funding_amount"
+      ],
+      "aggregates": {}
+    },
+    "PERSPECTIVE_GENERATED_ID_1": {
+      "version": "4.2.0",
+      "columns_config": {},
+      "plugin": "X Bar",
+      "plugin_config": {},
+      "table": "risk_mv",
+      "theme": "Pro Light",
+      "title": "BreakDownByDesk",
+      "group_by": [
+        "desk"
+      ],
+      "split_by": [
+        "collateral_type"
+      ],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "funding_amount"
+      ],
+      "aggregates": {},
+      "settings": false
+    },
+    "PERSPECTIVE_GENERATED_ID_2": {
+      "version": "4.2.0",
+      "columns_config": {},
+      "plugin": "Sunburst",
+      "plugin_config": {
+        "sunburstLevel": {}
+      },
+      "table": "risk_mv",
+      "theme": "Pro Light",
+      "title": "AssetClassBreakdown",
+      "group_by": [
+        "asset_class",
+        "counterparty_region"
+      ],
+      "split_by": [],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "trade_id",
+        null,
+        null
+      ],
+      "aggregates": {},
+      "settings": false
+    },
+    "PERSPECTIVE_GENERATED_ID_3": {
+      "version": "4.2.0",
+      "columns_config": {},
+      "plugin": "Datagrid",
+      "plugin_config": {},
+      "table": "risk_mv",
+      "theme": "Pro Light",
+      "title": "CashOutByCounterParty",
+      "group_by": [
+        "counterparty_name",
+        "collateral_desc",
+        "collateral_type"
+      ],
+      "split_by": [],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "funding_amount",
+        "collateral_amount",
+        "funding_spread"
+      ],
+      "aggregates": {
+        "funding_spread": "avg"
+      },
+      "settings": false
+    },
+    "PERSPECTIVE_GENERATED_ID_4": {
+      "version": "4.2.0",
+      "columns_config": {},
+      "plugin": "Treemap",
+      "plugin_config": {},
+      "table": "risk_mv",
+      "theme": "Pro Light",
+      "title": "RatingBreakdown",
+      "group_by": [
+        "collateral_type",
+        "rating"
+      ],
+      "split_by": [
+        "book_region"
+      ],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "collateral_amount",
+        "funding_amount",
+        null
+      ],
+      "aggregates": {},
+      "settings": false
+    }
+  },
+  "master": {
+    "widgets": [
+      "PERSPECTIVE_GENERATED_ID_0",
+      "PERSPECTIVE_GENERATED_ID_5"
+    ],
+    "sizes": [
+      0.5,
+      0.5
+    ]
+  }
+}

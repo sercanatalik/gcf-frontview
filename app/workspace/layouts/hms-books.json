@@ -1,0 +1,42 @@
+{
+  "sizes": [
+    1
+  ],
+  "detail": {
+    "main": {
+      "type": "tab-area",
+      "widgets": [
+        "PERSPECTIVE_GENERATED_ID_1"
+      ],
+      "currentIndex": 0
+    }
+  },
+  "viewers": {
+    "PERSPECTIVE_GENERATED_ID_1": {
+      "version": "4.2.0",
+      "columns_config": {},
+      "plugin": "Datagrid",
+      "plugin_config": {},
+      "table": "hmsbook",
+      "theme": "Pro Light",
+      "title": null,
+      "group_by": [
+        "desk",
+        "region"
+      ],
+      "split_by": [],
+      "sort": [],
+      "filter": [],
+      "expressions": {},
+      "columns": [
+        "book_name",
+        "supervisor_id",
+        "supervisor_name",
+        "supervisor_email",
+        "supervisor_level"
+      ],
+      "aggregates": {},
+      "settings": false
+    }
+  }
+}
