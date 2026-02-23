@@ -23,16 +23,7 @@ export default function DatasetPage() {
     <>
       {!ready && <LoadingScreen progress={loading} />}
       <div
-        style={{
-          display: ready ? "flex" : "none",
-          flexDirection: "column",
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: "#f2f4f6",
-        }}
+        className={`${ready ? "flex" : "hidden"} flex-col absolute inset-0 bg-muted`}
       >
         <WorkspaceHeader
           layouts={layouts}
@@ -46,11 +37,7 @@ export default function DatasetPage() {
         <perspective-workspace
           ref={workspaceRef}
           id="psp_workspace"
-          style={{
-            flex: 1,
-            overflow: "hidden",
-            border: "1px solid #666",
-          }}
+          className="flex-1 overflow-hidden border border-border"
         />
       </div>
     </>
