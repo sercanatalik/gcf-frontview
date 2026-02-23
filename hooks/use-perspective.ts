@@ -64,6 +64,17 @@ export function usePerspective(
 
     let cancelled = false;
 
+    // Suppress "View not found" from async Perspective internals
+    // that fire during layout transitions (maximize/restore, filter
+    // propagation, config-update handlers). These are benign WASM
+    // errors on views that are momentarily absent while the dock
+    // panel switches modes.
+    const suppressViewNotFound = (event: PromiseRejectionEvent) => {
+      const msg = event.reason?.message ?? "";
+      if (msg === "View not found") event.preventDefault();
+    };
+    window.addEventListener("unhandledrejection", suppressViewNotFound);
+
     async function setup() {
       try {
         // Phase 1: Init WASM
@@ -176,19 +187,6 @@ export function usePerspective(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const wsInternal = (workspace as any).workspace;
         if (wsInternal) {
-          // Fix "View not found" crash: _filterViewer is called without
-          // error handling when a global filter propagates to detail views
-          // whose underlying WASM view may not exist yet or was deleted.
-          const origFilterViewer =
-            wsInternal._filterViewer.bind(wsInternal);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          wsInternal._filterViewer = async (...args: any[]) => {
-            try {
-              return await origFilterViewer(...args);
-            } catch {
-              // Silently ignore — view was deleted or not ready
-            }
-          };
 
           // Fix label crash: several commands use non-null assertions on
           // getWidgetByName() which returns null after a widget is closed.
@@ -216,13 +214,18 @@ export function usePerspective(
             patchLabel("workspace:newview", "View");
           }
 
-          // Add custom "gcf-frontview" context menu item
+          // Add maximize/restore command + context menu item
           if (wsInternal.commands) {
-            wsInternal.commands.addCommand("workspace:gcf-frontview", {
-              execute: () => {
-                // TODO: wire up action
+            wsInternal.commands.addCommand("workspace:maximize", {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              execute: ({ widget_name }: any) => {
+                const w = wsInternal.getWidgetByName(widget_name);
+                if (w) wsInternal.toggleSingleDocument(w);
               },
-              label: "gcf-frontview",
+              label: () =>
+                wsInternal.dockpanel.mode === "single-document"
+                  ? "Restore"
+                  : "Maximize",
               mnemonic: 0,
             });
 
@@ -231,11 +234,142 @@ export function usePerspective(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             wsInternal.createContextMenu = (widget: any) => {
               const menu = origCreateCtx(widget);
-              menu.addItem({ type: "separator" });
-              menu.addItem({ command: "workspace:gcf-frontview" });
+              if (widget) {
+                const widget_name = widget.viewer.getAttribute("slot");
+                menu.insertItem(menu.items.length - 2, {
+                  command: "workspace:maximize",
+                  args: { widget_name },
+                });
+              }
               return menu;
             };
           }
+
+          // Inject maximize button into each viewer's shadow DOM
+          const MAXIMIZE_SVG =
+            "data:image/svg+xml," +
+            encodeURIComponent(
+              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>'
+            );
+          const RESTORE_SVG =
+            "data:image/svg+xml," +
+            encodeURIComponent(
+              '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>'
+            );
+
+          function injectMaximizeButton(viewer: Element) {
+            const shadow = viewer.shadowRoot;
+            if (!shadow || shadow.querySelector("#maximize_button")) return;
+
+            const settingsBtn = shadow.querySelector("#settings_button");
+            if (!settingsBtn) return;
+
+            // Add styles for the maximize button
+            const style = document.createElement("style");
+            style.textContent = `
+              #maximize_button {
+                background-color: var(--plugin--background);
+                padding: 0;
+                overflow: hidden;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 10000;
+                border: 1px solid var(--inactive--color);
+                border-radius: 5px;
+                font-size: 10px;
+                font-weight: normal;
+                cursor: pointer;
+              }
+              #maximize_button:hover {
+                color: var(--plugin--background, inherit);
+                background-color: var(--icon--color);
+              }
+              #maximize_button:hover:before {
+                background-color: var(--plugin--background);
+              }
+              #maximize_button:before {
+                content: "";
+                display: inline-block;
+                width: 20px;
+                height: 20px;
+                background-color: var(--icon--color);
+                mask-size: cover;
+                -webkit-mask-size: cover;
+                background-repeat: no-repeat;
+                -webkit-mask-image: var(--maximize-icon);
+                mask-image: var(--maximize-icon);
+              }
+            `;
+            shadow.appendChild(style);
+
+            const maxBtn = document.createElement("div");
+            maxBtn.id = "maximize_button";
+            maxBtn.className = "noselect";
+            const isMax =
+              wsInternal.dockpanel.mode === "single-document";
+            maxBtn.style.setProperty(
+              "--maximize-icon",
+              `url("${isMax ? RESTORE_SVG : MAXIMIZE_SVG}")`
+            );
+            const closeBtn = shadow.querySelector("#close_button");
+            if (closeBtn) {
+              closeBtn.before(maxBtn);
+            } else {
+              settingsBtn.after(maxBtn);
+            }
+
+            maxBtn.addEventListener("mousedown", (e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const slotName = viewer.getAttribute("slot");
+              const w = slotName
+                ? wsInternal.getWidgetByName(slotName)
+                : null;
+              if (w) wsInternal.toggleSingleDocument(w);
+
+              // Update all maximize button icons
+              const nowMax =
+                wsInternal.dockpanel.mode === "single-document";
+              workspace!.querySelectorAll("perspective-viewer").forEach(
+                (v: Element) => {
+                  const btn = v.shadowRoot?.querySelector(
+                    "#maximize_button"
+                  ) as HTMLElement | null;
+                  if (btn) {
+                    btn.style.setProperty(
+                      "--maximize-icon",
+                      `url("${nowMax ? RESTORE_SVG : MAXIMIZE_SVG}")`
+                    );
+                  }
+                }
+              );
+            });
+          }
+
+          // Inject into existing viewers
+          workspace.querySelectorAll("perspective-viewer").forEach(
+            (v: Element) => injectMaximizeButton(v)
+          );
+
+          // Observe for dynamically added viewers
+          const maximizeObserver = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+              for (const node of m.addedNodes) {
+                if (!(node instanceof HTMLElement)) continue;
+                if (node.tagName === "PERSPECTIVE-VIEWER") {
+                  injectMaximizeButton(node);
+                }
+                node
+                  .querySelectorAll("perspective-viewer")
+                  .forEach((v) => injectMaximizeButton(v));
+              }
+            }
+          });
+          maximizeObserver.observe(workspace, {
+            childList: true,
+            subtree: true,
+          });
         }
 
         // Fetch available layouts
@@ -287,6 +421,7 @@ export function usePerspective(
     setup();
     return () => {
       cancelled = true;
+      window.removeEventListener("unhandledrejection", suppressViewNotFound);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
