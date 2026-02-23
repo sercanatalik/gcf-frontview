@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchTables, fetchTableData } from "@/lib/api";
 import type { TableQueryParams } from "@/lib/types";
 
+
 export function useTables() {
   return useQuery({
     queryKey: ["tables"],

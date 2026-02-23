@@ -1,65 +1,60 @@
 import type {
-  TablesResponse,
   TableQueryParams,
   TableQueryResponse,
   EnrichedTablesResponse,
 } from "./types";
 
-export async function fetchTables(): Promise<TablesResponse> {
-  const res = await fetch("/api/tables");
-  if (!res.ok) throw new Error("Failed to fetch tables");
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
+async function apiFetch<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE_PATH}${path}`);
+  if (!res.ok) throw new Error(`API error: ${path}`);
   return res.json();
 }
 
-export async function fetchEnrichedTables(): Promise<EnrichedTablesResponse> {
-  const res = await fetch("/api/tables");
-  if (!res.ok) throw new Error("Failed to fetch tables");
-  return res.json();
+export function fetchTables(): Promise<EnrichedTablesResponse> {
+  return apiFetch("/api/tables");
 }
 
-export async function fetchTableData(params: TableQueryParams): Promise<TableQueryResponse> {
-  const searchParams = new URLSearchParams();
+export function fetchTableData(
+  params: TableQueryParams
+): Promise<TableQueryResponse> {
+  const sp = new URLSearchParams();
 
-  if (params.limit != null) searchParams.set("limit", String(params.limit));
-  if (params.offset != null) searchParams.set("offset", String(params.offset));
-  if (params.columns?.length) searchParams.set("columns", params.columns.join(","));
-  if (params.orderBy) searchParams.set("order_by", params.orderBy);
-  if (params.orderDir) searchParams.set("order_dir", params.orderDir);
+  if (params.limit != null) sp.set("limit", String(params.limit));
+  if (params.offset != null) sp.set("offset", String(params.offset));
+  if (params.columns?.length) sp.set("columns", params.columns.join(","));
+  if (params.orderBy) sp.set("order_by", params.orderBy);
+  if (params.orderDir) sp.set("order_dir", params.orderDir);
 
   if (params.filters) {
     for (const [col, value] of Object.entries(params.filters)) {
-      searchParams.set(`filter_${col}`, value);
+      sp.set(`filter_${col}`, value);
     }
   }
 
-  const qs = searchParams.toString();
-  const url = `/api/tables/${params.table}${qs ? `?${qs}` : ""}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to fetch table '${params.table}'`);
-  return res.json();
+  const qs = sp.toString();
+  return apiFetch(`/api/tables/${params.table}${qs ? `?${qs}` : ""}`);
 }
 
 export async function fetchAllTableData(
   tableName: string,
-  hasAsOfDate: boolean,
-  batchSize = 100000
+  options: { asOfDate?: string; batchSize?: number } = {}
 ): Promise<Record<string, unknown>[]> {
+  const { asOfDate, batchSize = 100_000 } = options;
   const allRows: Record<string, unknown>[] = [];
   let offset = 0;
   let hasMore = true;
 
   while (hasMore) {
-    const searchParams = new URLSearchParams();
-    searchParams.set("limit", String(batchSize));
-    searchParams.set("offset", String(offset));
-    if (hasAsOfDate) {
-      searchParams.set("as_of_date", "__latest__");
-    }
+    const sp = new URLSearchParams();
+    sp.set("limit", String(batchSize));
+    sp.set("offset", String(offset));
+    if (asOfDate) sp.set("as_of_date", asOfDate);
 
-    const url = `/api/tables/${tableName}?${searchParams.toString()}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch table '${tableName}'`);
-    const data: TableQueryResponse = await res.json();
+    const data = await apiFetch<TableQueryResponse>(
+      `/api/tables/${tableName}?${sp.toString()}`
+    );
 
     allRows.push(...data.rows);
     hasMore = data.meta.hasMore;

@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { HTMLPerspectiveWorkspaceElement } from "@perspective-dev/workspace";
 import type { LoadingProgress, EnrichedTableInfo } from "@/lib/types";
-import { fetchEnrichedTables, fetchAllTableData } from "@/lib/api";
+import { fetchTables, fetchAllTableData } from "@/lib/api";
 
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
 const STORAGE_KEY = "perspective-workspace-state";
 
 const INITIAL_PROGRESS: LoadingProgress = {
@@ -75,9 +76,9 @@ export function usePerspective(
 
         const perspective = (await import("@perspective-dev/client")).default;
         const viewer = await import("@perspective-dev/viewer");
-        perspective.init_client(fetch("/perspective-js.wasm"));
-        perspective.init_server(fetch("/perspective-server.wasm"));
-        await viewer.init_client(fetch("/perspective-viewer.wasm"));
+        perspective.init_client(fetch(`${BASE_PATH}/perspective-js.wasm`));
+        perspective.init_server(fetch(`${BASE_PATH}/perspective-server.wasm`));
+        await viewer.init_client(fetch(`${BASE_PATH}/perspective-viewer.wasm`));
         const client = await perspective.worker();
         clientRef.current = client;
         if (cancelled) return;
@@ -86,7 +87,7 @@ export function usePerspective(
         if (cancelled) return;
         setLoading((p) => ({ ...p, phase: "fetch-schemas" }));
 
-        const { tables } = await fetchEnrichedTables();
+        const { tables } = await fetchTables();
         if (cancelled) return;
 
         // Phase 3: Load tables
@@ -119,10 +120,9 @@ export function usePerspective(
           await client.table(schema as any, { name: tableInfo.name });
 
           // Fetch data
-          const rows = await fetchAllTableData(
-            tableInfo.name,
-            tableInfo.hasAsOfDate
-          );
+          const rows = await fetchAllTableData(tableInfo.name, {
+            asOfDate: tableInfo.hasAsOfDate ? "__latest__" : undefined,
+          });
 
           // Coerce values to match Perspective schema types
           for (const row of rows) {
@@ -240,7 +240,7 @@ export function usePerspective(
 
         // Fetch available layouts
         try {
-          const res = await fetch("/api/layouts");
+          const res = await fetch(`${BASE_PATH}/api/layouts`);
           const data = await res.json();
           if (data.layouts) {
             setLayouts(data.layouts.map((l: { name: string }) => l.name));
@@ -323,7 +323,7 @@ export function usePerspective(
       const workspace = workspaceRef.current;
       if (!workspace) return;
       try {
-        const res = await fetch(`/api/layouts/${encodeURIComponent(name)}`);
+        const res = await fetch(`${BASE_PATH}/api/layouts/${encodeURIComponent(name)}`);
         if (!res.ok) return;
         const layout = await res.json();
         await workspace.restore(layout);
@@ -341,7 +341,7 @@ export function usePerspective(
     if (!workspace) return;
     localStorage.removeItem(STORAGE_KEY);
     try {
-      const { tables } = await fetchEnrichedTables();
+      const { tables } = await fetchTables();
       const layout = buildDefaultLayout(tables);
       await workspace.restore(layout);
     } catch {

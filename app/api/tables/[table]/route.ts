@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clickhouse } from "@/lib/clickhouse";
+import { clickhouse, isTableAllowed } from "@/lib/clickhouse";
 
 const MAX_LIMIT = 1000000;
 const DEFAULT_LIMIT = 1000;
@@ -16,6 +16,13 @@ export async function GET(
       return NextResponse.json(
         { error: `Invalid table name: '${table}'` },
         { status: 400 }
+      );
+    }
+
+    if (!isTableAllowed(table)) {
+      return NextResponse.json(
+        { error: `Table '${table}' not found` },
+        { status: 404 }
       );
     }
 

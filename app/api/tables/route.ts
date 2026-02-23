@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
-import { clickhouse } from "@/lib/clickhouse";
+import { clickhouse, allowedTables } from "@/lib/clickhouse";
 import { clickhouseToPerspective } from "@/lib/clickhouse-type-map";
 
 export async function GET() {
   try {
-    const tablesResult = await clickhouse.query({
-      query: "SHOW TABLES",
-      format: "TabSeparated",
-    });
-    const tablesText = await tablesResult.text();
-    const tableNames = tablesText.trim().split("\n").filter(Boolean);
+    let tableNames: string[];
+    if (allowedTables.length > 0) {
+      tableNames = allowedTables;
+    } else {
+      const tablesResult = await clickhouse.query({
+        query: "SHOW TABLES",
+        format: "TabSeparated",
+      });
+      const tablesText = await tablesResult.text();
+      tableNames = tablesText.trim().split("\n").filter(Boolean);
+    }
 
     const tables = await Promise.all(
       tableNames.map(async (name) => {
