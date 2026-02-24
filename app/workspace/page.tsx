@@ -38,14 +38,16 @@ export default function DatasetPage() {
           onChatToggle={() => setChatOpen((v) => !v)}
         />
 
-        <perspective-workspace
-          ref={workspaceRef}
-          id="psp_workspace"
-          className="flex-1 overflow-hidden border border-border"
-        />
-      </div>
+        <div className="flex flex-1 overflow-hidden">
+          <perspective-workspace
+            ref={workspaceRef}
+            id="psp_workspace"
+            className="flex-1 overflow-hidden border border-border"
+          />
 
-      <AIChat open={chatOpen} onOpenChange={setChatOpen} />
+          {chatOpen && <AIChat />}
+        </div>
+      </div>
     </>
   );
 }
