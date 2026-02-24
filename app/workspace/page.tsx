@@ -1,13 +1,15 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { HTMLPerspectiveWorkspaceElement } from "@perspective-dev/workspace";
 import { WorkspaceHeader } from "@/components/workspace/workspace-header";
 import { LoadingScreen } from "@/components/workspace/loading-screen";
+import { AIChat } from "@/components/workspace/ai-chat";
 import { usePerspective } from "@/hooks/use-perspective";
 
 export default function DatasetPage() {
   const workspaceRef = useRef<HTMLPerspectiveWorkspaceElement>(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const {
     ready,
     loading,
@@ -32,6 +34,8 @@ export default function DatasetPage() {
           onExport={exportLayout}
           onImport={importLayout}
           onReset={resetLayout}
+          chatOpen={chatOpen}
+          onChatToggle={() => setChatOpen((v) => !v)}
         />
 
         <perspective-workspace
@@ -40,6 +44,8 @@ export default function DatasetPage() {
           className="flex-1 overflow-hidden border border-border"
         />
       </div>
+
+      <AIChat open={chatOpen} onOpenChange={setChatOpen} />
     </>
   );
 }

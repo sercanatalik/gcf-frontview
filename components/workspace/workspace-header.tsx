@@ -1,5 +1,5 @@
 import { useRef, ChangeEvent } from "react";
-import { Download, Upload, RotateCcw, LayoutGrid, EllipsisVertical } from "lucide-react";
+import { Download, Upload, RotateCcw, LayoutGrid, EllipsisVertical, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -23,6 +23,8 @@ interface WorkspaceHeaderProps {
   onExport: () => void;
   onImport: (file: File) => void;
   onReset: () => void;
+  chatOpen: boolean;
+  onChatToggle: () => void;
 }
 
 export function WorkspaceHeader({
@@ -32,6 +34,8 @@ export function WorkspaceHeader({
   onExport,
   onImport,
   onReset,
+  chatOpen,
+  onChatToggle,
 }: WorkspaceHeaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,6 +72,16 @@ export function WorkspaceHeader({
       )}
 
       <div className="flex-1" />
+
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        onClick={onChatToggle}
+        aria-label="Toggle AI Chat"
+        className={chatOpen ? "bg-muted" : ""}
+      >
+        <MessageSquare className="size-3.5" />
+      </Button>
 
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger asChild>
